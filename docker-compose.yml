@@ -1,25 +1,30 @@
-version: "3"
+version: "3.8"
 services:
   orb_slam3_22_humble:
+    build:
+      context: ./ORB_SLAM3  # Path to your Dockerfile directory
+      dockerfile: Dockerfile  # Ensure this points to your modified Dockerfile
     image: orb-slam3-humble:22.04
     volumes:
-      #full dev
-      - /dev:/dev:rw
-      #full media
-      - /media:/media:rw
-      #Time
-      - /etc/timezone:/etc/timezone:rw
-      - /etc/localtime:/etc/localtime:rw
-      #ros-workspaces
+      # Mount only necessary devices (e.g., specific camera)
+      - /dev/video0:/dev/video0:rw  # Example for a webcam device
+      # Time synchronization
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+      # ROS workspaces
       - ./container_root/:/root/
       - ./orb_slam3_ros2_wrapper/:/root/colcon_ws/src/orb_slam3_ros2_wrapper/
       - ./slam_msgs/:/root/colcon_ws/src/slam_msgs/
-      # - ./ORB_SLAM3/:/home/orb/ORB_SLAM3/
-    privileged: true
-    network_mode: host
+      - ./ORB_SLAM3/:/home/orb/ORB_SLAM3/  # Uncomment if needed
+    # Remove privileged mode if not necessary
+    # privileged: true
+    # Alternatively, add specific capabilities
+    # cap_add:
+    #   - SYS_PTRACE
+    network_mode: host  # Keep if necessary for ROS2 networking
     ipc: host
     stdin_open: true
     tty: true
     environment:
-      - DISPLAY
-    entrypoint: /bin/bash
+      - DISPLAY=${DISPLAY}  # Ensure X11 forwarding is set up if using GUI
+    entrypoint: /bin/bash  # Consider changing to a ROS2 launch command for automation
