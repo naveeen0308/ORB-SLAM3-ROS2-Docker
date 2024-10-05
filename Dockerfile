@@ -1,62 +1,107 @@
-# Image taken from https://github.com/turlucode/ros-docker-gui
-FROM osrf/ros:humble-desktop-full-jammy
+# Use the TI Robotics SDK's ROS2 Humble base image
+FROM robotics-sdk:10.0.0-humble-j721e
 
-RUN apt-get update
-
+# Set non-interactive mode for APT
 ARG DEBIAN_FRONTEND=noninteractive
-RUN apt-get install -y gnupg2 curl lsb-core vim wget python3-pip libpng16-16 libjpeg-turbo8 libtiff5
 
+# Update package lists
+RUN apt-get update && apt-get upgrade -y
+
+# Install necessary dependencies
 RUN apt-get install -y \
-    # Base tools
+    gnupg2 \
+    curl \
+    lsb-core \
+    vim \
+    wget \
+    python3-pip \
+    libpng16-16 \
+    libjpeg-turbo8 \
+    libtiff5 \
     cmake \
     build-essential \
     git \
     unzip \
     pkg-config \
     python3-dev \
-    # OpenCV dependencies
     python3-numpy \
-    # Pangolin dependencies
     libgl1-mesa-dev \
     libglew-dev \
-    libpython3-dev \
     libeigen3-dev \
     apt-transport-https \
-    ca-certificates\
-    software-properties-common
+    ca-certificates \
+    software-properties-common \
+    libavcodec-dev \
+    libavformat-dev \
+    libswscale-dev \
+    libgstreamer-plugins-base1.0-dev \
+    libgstreamer1.0-dev \
+    libgtk-3-dev \
+    ros-humble-pcl-ros \
+    tmux \
+    ros-humble-nav2-common \
+    x11-apps \
+    nano
 
-RUN apt update
+# Clean up APT cache to reduce image size
+RUN apt-get clean && rm -rf /var/lib/apt/lists/*
 
-
-# Build OpenCV
-RUN apt-get install -y python3-dev python3-numpy python2-dev
-RUN apt-get install -y libavcodec-dev libavformat-dev libswscale-dev
-RUN apt-get install -y libgstreamer-plugins-base1.0-dev libgstreamer1.0-dev
-RUN apt-get install -y libgtk-3-dev
-
-RUN cd /tmp && git clone https://github.com/opencv/opencv.git && \
+# Build OpenCV from source
+RUN cd /tmp && \
+    git clone https://github.com/opencv/opencv.git && \
     cd opencv && \
-    git checkout 4.4.0 && mkdir build && cd build && \
-    cmake -D CMAKE_BUILD_TYPE=Release -D BUILD_EXAMPLES=OFF  -D BUILD_DOCS=OFF -D BUILD_PERF_TESTS=OFF -D BUILD_TESTS=OFF -D CMAKE_INSTALL_PREFIX=/usr/local .. && \
-    make -j8 && make install && \
-    cd / && rm -rf /tmp/opencv
+    git checkout 4.4.0 && \
+    mkdir build && \
+    cd build && \
+    cmake -D CMAKE_BUILD_TYPE=Release \
+          -D BUILD_EXAMPLES=OFF \
+          -D BUILD_DOCS=OFF \
+          -D BUILD_PERF_TESTS=OFF \
+          -D BUILD_TESTS=OFF \
+          -D CMAKE_INSTALL_PREFIX=/usr/local .. && \
+    make -j$(nproc) && \
+    make install && \
+    cd / && \
+    rm -rf /tmp/opencv
 
-# Build Pangolin
-RUN cd /tmp && git clone https://github.com/stevenlovegrove/Pangolin && \
-    cd Pangolin && git checkout v0.9.1 && mkdir build && cd build && \
-    cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS=-std=c++14 -DCMAKE_INSTALL_PREFIX=/usr/local .. && \
-    make -j8 && make install && \
-    cd / && rm -rf /tmp/Pangolin
+# Build Pangolin from source
+RUN cd /tmp && \
+    git clone https://github.com/stevenlovegrove/Pangolin.git && \
+    cd Pangolin && \
+    git checkout v0.9.1 && \
+    mkdir build && \
+    cd build && \
+    cmake -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_CXX_FLAGS=-std=c++14 \
+          -DCMAKE_INSTALL_PREFIX=/usr/local .. && \
+    make -j$(nproc) && \
+    make install && \
+    cd / && \
+    rm -rf /tmp/Pangolin
 
-# Build vscode (can be removed later for deployment)
-COPY ./container_root/shell_scripts/vscode_install.sh /root/
-RUN cd /root/ && sudo chmod +x * && ./vscode_install.sh && rm -rf vscode_install.sh
+# (Optional) Install VSCode or other tools if needed for development
+# COPY ./container_root/shell_scripts/vscode_install.sh /root/
+# RUN cd /root/ && chmod +x * && ./vscode_install.sh && rm -rf vscode_install.sh
 
-# Build ORB-SLAM3 with its dependencies.
-RUN apt-get update && apt-get install ros-humble-pcl-ros tmux -y
-RUN apt-get install ros-humble-nav2-common x11-apps nano -y
-COPY ORB_SLAM3 /home/orb/ORB_SLAM3
-RUN . /opt/ros/humble/setup.sh && cd /home/orb/ORB_SLAM3 && mkdir -p build && ./build.sh
-COPY orb_slam3_ros2_wrapper /root/colcon_ws/src/orb_slam3_ros2_wrapper
-COPY slam_msgs /root/colcon_ws/src/slam_msgs
-RUN . /opt/ros/humble/setup.sh && cd /root/colcon_ws/ && colcon build --symlink-install
+# Set up ORB-SLAM3
+# Create a user 'orb' to run ORB-SLAM3 (optional but recommended for security)
+RUN useradd -m -s /bin/bash orb && \
+    echo "orb:orb" | chpasswd && \
+    adduser orb sudo
+
+# Switch to the 'orb' user
+USER orb
+WORKDIR /home/orb
+
+# Clone ORB-SLAM3 repository
+RUN git clone https://github.com/Mauhing/ORB_SLAM3.git ORB_SLAM3
+
+# Build ORB-SLAM3
+RUN cd ORB_SLAM3 && \
+    mkdir build && \
+    cd build && \
+    cmake .. && \
+    make -j$(nproc)
+
+# (Optional) Define entrypoint or default command
+# CMD ["bash"]
